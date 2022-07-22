@@ -22,6 +22,8 @@ from alphapose.utils.webcam_detector import WebCamDetectionLoader
 from alphapose.utils.writer import DataWriter
 from alphapose.utils.pPose_nms import write_json
 
+from LSTM.lstm_model.model.RNN import RNN
+
 """----------------------------- options -----------------------------"""
 parser = argparse.ArgumentParser(description='Fall Detection Using Alphapose')
 parser.add_argument('--cfg', type=str, required=True,
@@ -122,6 +124,32 @@ def loop():
         yield n
         n += 1
 
+def get_keypoints(inputed_result):
+    try:
+        keypoints = inputed_result['result'][0]['keypoints']
+    except:
+        return None
+    max_score = inputed_result['result'][0]['proposal_score']
+    if len(inputed_result['result']) >= 2:
+        for each_result in inputed_result['result']:
+            if each_result['proposal_score'] > max_score:
+                max_score = each_result['proposal_score']
+                keypoints = each_result['keypoints']
+    result = []
+    if max_score[0] <= 2.3:
+        return None
+    for n in range(keypoints.shape[0]):
+        result.append(float(keypoints[n, 0]))
+        result.append(float(keypoints[n, 1]))
+    return torch.FloatTensor(result).reshape(1, 1, 34)
+
+def inference_fall(keypoints):
+    # fall : 1, not fall : 0
+    outputs = lstm_model(keypoints).to(args.device)
+    _, predicted = torch.max(outputs, 1)
+    return predicted[0] == 1
+
+
 
 if __name__ == "__main__":
     mode, input_source = check_input()
@@ -169,6 +197,15 @@ if __name__ == "__main__":
         writer = DataWriter(cfg, args, save_video=True, video_save_opt=video_save_opt, queueSize=queueSize).start()
     else:
         writer = DataWriter(cfg, args, save_video=False, queueSize=queueSize).start()
+
+    # loading lstm model...
+    print('Loading Fall Detection Model...')
+    input_size = 34
+    hidden_size = 128
+    num_layers = 2
+    lstm_model = RNN(input_size, hidden_size, num_layers, 2).to(args.device)
+    lstm_model.load_state_dict(torch.load('pretrained_models/fall_detect.pth'))
+    lstm_model.eval()
 
     if mode == 'webcam':
         print('Starting webcam demo, press Ctrl + C to terminate...')
@@ -220,8 +257,11 @@ if __name__ == "__main__":
                 hm = hm.cpu()
                 writer.save(boxes, scores, ids, hm, cropped_boxes, orig_img, im_name)
                 result = writer.final_result_queue.get()
-                jsons = write_json([result], 'result/thermo_webcam_json', 'coco')
-                # print(result)
+                # jsons = write_json([result], 'result/thermo_webcam_json', 'coco')
+                kp = get_keypoints(result)
+                if kp != None:
+                    is_fall = inference_fall(kp)
+                    print(is_fall)
                 if args.profile:
                     ckpt_time, post_time = getTime(ckpt_time)
                     runtime_profile['pn'].append(post_time)

@@ -5,7 +5,7 @@ import datetime, os
 
 
 class ThermoDetector(ThermoCamDetection):
-    def __init__(self, model_path='trained_models/exp2_best.pt', res_model='trained_models/ESPCN_x4.pb'):
+    def __init__(self, model_path='trained_models/exp2_best.pt'):
         super().__init__(model_path)
         self.bed_region = None
         self.bed_area = None
@@ -150,4 +150,4 @@ if __name__ == '__main__':
     else:
         td = ThermoDetector()
     td.set_bed_region(210, 50, 450, 450)
-    td.camStart("thermal detection", "/dev/video0", cv2.VideoWriter.fourcc('Y', '1', '6', ' '))
+    td.camStart("thermal detection", "/dev/video1", cv2.VideoWriter.fourcc('Y', '1', '6', ' '))

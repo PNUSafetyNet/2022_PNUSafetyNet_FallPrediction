@@ -3,6 +3,7 @@
 *.pt
 
 # ignore build and private file
+.idea/
 AlphaPose/.idea/
 AlphaPose/build/
 AlphaPose/alphapose.egg-info
