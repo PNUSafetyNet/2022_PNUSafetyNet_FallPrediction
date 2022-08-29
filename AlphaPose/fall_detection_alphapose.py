@@ -3,11 +3,14 @@ import argparse
 import platform
 import sys
 import time
-import json
+from queue import Queue
+import statistics
 
 import numpy as np
 import torch
 from tqdm import tqdm
+from tensorflow.keras import models
+from sklearn.preprocessing import StandardScaler
 
 from detector.apis import get_detector
 from trackers.tracker_api import Tracker
@@ -20,9 +23,6 @@ from alphapose.utils.transforms import flip, flip_heatmap
 from alphapose.utils.vis import getTime
 from alphapose.utils.webcam_detector import WebCamDetectionLoader
 from alphapose.utils.writer import DataWriter
-from alphapose.utils.pPose_nms import write_json
-
-from LSTM.lstm_model.model.RNN import RNN
 
 """----------------------------- options -----------------------------"""
 parser = argparse.ArgumentParser(description='Fall Detection Using Alphapose')
@@ -141,17 +141,52 @@ def get_keypoints(inputed_result):
     for n in range(keypoints.shape[0]):
         result.append(float(keypoints[n, 0]))
         result.append(float(keypoints[n, 1]))
-    return torch.FloatTensor(result).reshape(1, 1, 34)
+    # return torch.FloatTensor(result).reshape(1, 1, 34)
+    return np.array(result)
 
-def inference_fall(keypoints):
-    # fall : 1, not fall : 0
-    outputs = lstm_model(keypoints).to(args.device)
-    _, predicted = torch.max(outputs, 1)
-    return predicted[0] == 1
+# for lstm.
+# def inference_fall(keypoints):
+#     # fall : 1, not fall : 0
+#     outputs = lstm_model(keypoints).to(args.device)
+#     _, predicted = torch.max(outputs, 1)
+#     return predicted[0] == 1
 
+def inference_pose(keypoints):
+    # in-bed : 0, sitting : 1, edge : 2, fall : 3
+    keypoints = keypoints.reshape(-1, 1)
+    scaler = StandardScaler()
+    scaler.fit(keypoints)
+    kp_scaled = scaler.transform(keypoints)
+    kp_scaled = kp_scaled.reshape(1, -1)
+    outputs = fall_model.predict(kp_scaled)
+    return outputs.argmax()
 
+def buffered_pose_result(pose):
+    best_result = None
+    if pose_buffer.qsize() == buffer_size:
+        pose_buffer.get()
+        pose_buffer.put(pose)
+        best_result = statistics.mode(pose_buffer.queue)
+    else:
+        pose_buffer.put(pose)
+    return best_result
+
+def print_pose(_pose):
+    # 0 : in-bed 1 : sitting 2 : edge 3 : fall
+    if _pose == 0:
+        print('inferenced : in-bed')
+    elif _pose == 1:
+        print('inferenced : edge')
+    elif _pose == 2:
+        print('inferenced : sitting')
+    else:
+        print('inferenced : fall')
+
+buffer_size = 5
 
 if __name__ == "__main__":
+    pose_buffer = Queue()
+
     mode, input_source = check_input()
 
     if not os.path.exists(args.outputpath):
@@ -199,13 +234,18 @@ if __name__ == "__main__":
         writer = DataWriter(cfg, args, save_video=False, queueSize=queueSize).start()
 
     # loading lstm model...
+    # print('Loading Fall Detection Model...')
+    # input_size = 34
+    # hidden_size = 512
+    # num_layers = 5
+    # lstm_model = RNN(input_size, hidden_size, num_layers, 2).to(args.device)
+    # lstm_model.load_state_dict(torch.load('pretrained_models/fall_detect.pth'))
+    # lstm_model.eval()
+
+    # loading kears model...
     print('Loading Fall Detection Model...')
-    input_size = 34
-    hidden_size = 128
-    num_layers = 2
-    lstm_model = RNN(input_size, hidden_size, num_layers, 2).to(args.device)
-    lstm_model.load_state_dict(torch.load('pretrained_models/fall_detect.pth'))
-    lstm_model.eval()
+    fall_model = models.load_model("pretrained_models/fall_model.h5")
+    fall_model.summary()
 
     if mode == 'webcam':
         print('Starting webcam demo, press Ctrl + C to terminate...')
@@ -256,12 +296,14 @@ if __name__ == "__main__":
                     boxes,scores,ids,hm,cropped_boxes = track(tracker,args,orig_img,inps,boxes,hm,cropped_boxes,im_name,scores)
                 hm = hm.cpu()
                 writer.save(boxes, scores, ids, hm, cropped_boxes, orig_img, im_name)
+
                 result = writer.final_result_queue.get()
-                # jsons = write_json([result], 'result/thermo_webcam_json', 'coco')
                 kp = get_keypoints(result)
-                if kp != None:
-                    is_fall = inference_fall(kp)
-                    print(is_fall)
+                if kp is not None:
+                    # is_fall = inference_fall(kp)
+                    result_fall_detect = inference_pose(kp)
+                    best = buffered_pose_result(result_fall_detect)
+                    print_pose(best)
                 if args.profile:
                     ckpt_time, post_time = getTime(ckpt_time)
                     runtime_profile['pn'].append(post_time)

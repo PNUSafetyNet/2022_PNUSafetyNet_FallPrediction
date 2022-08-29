@@ -1,6 +1,7 @@
 # pretrained models
 *.pth
 *.pt
+*.h5
 
 # ignore build and private file
 .idea/
@@ -8,7 +9,7 @@ AlphaPose/.idea/
 AlphaPose/build/
 AlphaPose/alphapose.egg-info
 AlphaPose/result/
-
+AlphaPose/examples/
 
 
 # below : AlphaPose's ignore list
