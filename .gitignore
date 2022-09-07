@@ -10,7 +10,8 @@ AlphaPose/build/
 AlphaPose/alphapose.egg-info
 AlphaPose/result/
 AlphaPose/examples/
-
+tensorflow_cnn/csv_files
+tensorflow_cnn/trained_models
 
 # below : AlphaPose's ignore list
 # Byte-compiled / optimized / DLL files

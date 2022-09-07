@@ -99,7 +99,7 @@ class WebCamDetectionLoader():
         stream = cv2.VideoCapture(self.path)
 
         import os
-        model_path = '/home/safetylab/AlphaPose/pretrained_models/ESPCN_x4.pb'
+        model_path = os.path.join('pretrained_models/ESPCN_x4.pb')
         sr = cv2.dnn_superres.DnnSuperResImpl_create()
         sr.readModel(model_path)
         sr.setModel("espcn", 4)
