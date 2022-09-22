@@ -1,8 +1,8 @@
 import cv2
 import os
 
-base_path = "./record/before_preprocessing/"
-save_path = "./record/after_preprocessing/"
+base_path = "../record/before_preprocessing/"
+save_path = "../record/after_preprocessing/"
 model_path = '/home/safetylab/AlphaPose/alphapose/utils/ESPCN_x4.pb'
 
 imgname_list = os.listdir(base_path)

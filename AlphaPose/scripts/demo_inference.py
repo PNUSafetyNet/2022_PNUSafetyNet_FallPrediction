@@ -259,7 +259,7 @@ if __name__ == "__main__":
                 hm = hm.cpu()
                 writer.save(boxes, scores, ids, hm, cropped_boxes, orig_img, im_name)
                 # print(writer.results())
-                print(writer.final_result_queue.get())
+                # print(writer.final_result_queue.get())
                 if args.profile:
                     ckpt_time, post_time = getTime(ckpt_time)
                     runtime_profile['pn'].append(post_time)

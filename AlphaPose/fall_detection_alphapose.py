@@ -5,12 +5,12 @@ import sys
 import time
 from queue import Queue
 import statistics
+import joblib
 
 import numpy as np
 import torch
 from tqdm import tqdm
 from tensorflow.keras import models
-from sklearn.preprocessing import StandardScaler
 
 from detector.apis import get_detector
 from trackers.tracker_api import Tracker
@@ -23,6 +23,25 @@ from alphapose.utils.transforms import flip, flip_heatmap
 from alphapose.utils.vis import getTime
 from alphapose.utils.webcam_detector import WebCamDetectionLoader
 from alphapose.utils.writer import DataWriter
+
+from keras import backend as K
+
+def recall_m(y_true, y_pred):
+    true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
+    possible_positives = K.sum(K.round(K.clip(y_true, 0, 1)))
+    recall = true_positives / (possible_positives + K.epsilon())
+    return recall
+
+def precision_m(y_true, y_pred):
+    true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
+    predicted_positives = K.sum(K.round(K.clip(y_pred, 0, 1)))
+    precision = true_positives / (predicted_positives + K.epsilon())
+    return precision
+
+def f1_m(y_true, y_pred):
+    precision = precision_m(y_true, y_pred)
+    recall = recall_m(y_true, y_pred)
+    return 2*((precision*recall)/(precision+recall+K.epsilon()))
 
 """----------------------------- options -----------------------------"""
 parser = argparse.ArgumentParser(description='Fall Detection Using Alphapose')
@@ -153,12 +172,11 @@ def get_keypoints(inputed_result):
 
 def inference_pose(keypoints):
     # in-bed : 0, sitting : 1, edge : 2, fall : 3
-    keypoints = keypoints.reshape(-1, 1)
-    scaler = StandardScaler()
-    scaler.fit(keypoints)
+    keypoints = keypoints.reshape(1, -1)
+    scaler = joblib.load('pretrained_models/fall_scaler_robust_five_class.pkl')
     kp_scaled = scaler.transform(keypoints)
-    kp_scaled = kp_scaled.reshape(1, -1)
     outputs = fall_model.predict(kp_scaled)
+    print(outputs)
     return outputs.argmax()
 
 def buffered_pose_result(pose):
@@ -172,15 +190,16 @@ def buffered_pose_result(pose):
     return best_result
 
 def print_pose(_pose):
-    # 0 : in-bed 1 : sitting 2 : edge 3 : fall
     if _pose == 0:
         print('inferenced : in-bed')
     elif _pose == 1:
-        print('inferenced : edge')
-    elif _pose == 2:
         print('inferenced : sitting')
-    else:
+    elif _pose == 2:
         print('inferenced : fall')
+    elif _pose == 3:
+        print('inferenced : walk')
+    else:
+        print('inferenced : edge')
 
 buffer_size = 5
 
@@ -242,13 +261,13 @@ if __name__ == "__main__":
     # lstm_model.load_state_dict(torch.load('pretrained_models/fall_detect.pth'))
     # lstm_model.eval()
 
-    # loading kears model...
+    # loading keras model...
     print('Loading Fall Detection Model...')
-    fall_model = models.load_model("pretrained_models/fall_model.h5")
+    fall_model = models.load_model("pretrained_models/fall_model_five_class.h5", custom_objects={'recall_m':recall_m, 'precision_m': precision_m, 'f1_m':f1_m })
     fall_model.summary()
 
     if mode == 'webcam':
-        print('Starting webcam demo, press Ctrl + C to terminate...')
+        print('Starting webcam, press Ctrl + C to terminate...')
         sys.stdout.flush()
         im_names_desc = tqdm(loop())
     else:
@@ -290,7 +309,7 @@ if __name__ == "__main__":
                     hm.append(hm_j)
                 hm = torch.cat(hm)
                 if args.profile:
-                    ckpt_time, pose_time = getTime(ckpt_time)
+                    ckpt_time, pose_time = getTime(ckpt_time)   
                     runtime_profile['pt'].append(pose_time)
                 if args.pose_track:
                     boxes,scores,ids,hm,cropped_boxes = track(tracker,args,orig_img,inps,boxes,hm,cropped_boxes,im_name,scores)
